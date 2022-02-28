@@ -104,6 +104,11 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_pcount(void);
+extern uint64 sys_nice(void);
+extern uint64 sys_getpstat(void);
+
+
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -120,6 +125,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_sbrk]    sys_sbrk,
 [SYS_sleep]   sys_sleep,
 [SYS_uptime]  sys_uptime,
+[SYS_pcount]  sys_pcount,
+[SYS_nice]    sys_nice,
+[SYS_getpstat]    sys_getpstat,
 [SYS_open]    sys_open,
 [SYS_write]   sys_write,
 [SYS_mknod]   sys_mknod,

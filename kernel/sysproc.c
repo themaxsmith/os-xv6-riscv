@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "pstat.h"
 
 uint64
 sys_exit(void)
@@ -95,3 +96,75 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// gets system process count
+uint64
+sys_pcount(void)
+{
+  int count = 0;
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state != UNUSED){
+    count++;
+    }
+  }
+return count;
+
+}
+
+
+// set a nice value for the process
+uint64
+sys_nice(void)
+{
+
+ int n;
+ struct proc *p = myproc();
+ if(argint(0, &n) < 0)
+    return -1;
+ if(-20 <= n && n <= 19){
+    
+     p->niceValue = n;
+    return 0;
+ }
+    return -1;
+  
+
+return 0;
+
+}
+
+// get a table of process stats
+uint64 sys_getpstat(void) { 
+    uint64 result = 0; 
+    struct proc *p = myproc(); 
+    uint64 upstat; // the virtual (user) address of the passed argument struct pstat 
+    struct pstat kpstat; // a struct pstat in kernel memory 
+ 
+    // get the system call argument passed by the user program 
+    if (argaddr(0, &upstat) < 0) 
+        return -1; 
+ 
+ 
+  for(int i = 0; i < NPROC; i++){
+      struct proc *current = &proc[i];
+
+      // output process info or 0 if not has info
+      if(current->state != UNUSED){
+      kpstat.inuse[i] = 1;
+      kpstat.pid[i] = current->pid;
+      kpstat.nice[i] = current->niceValue;
+      }else{
+      kpstat.inuse[i] = 0;
+      kpstat.pid[i] = 0;
+      kpstat.nice[i] = 0;
+      }
+    }
+    
+ 
+    // copy pstat from kernel memory to user memory 
+    if (copyout(p->pagetable, upstat, (char *)&kpstat, sizeof(kpstat)) < 0) 
+        return -1; 
+ 
+    return result; 
+} 
