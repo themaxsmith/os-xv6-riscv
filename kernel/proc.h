@@ -93,6 +93,9 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   int niceValue;               // nice value (added Project 1B)
+  int runtime;                 // runtime value (added Project 1C)
+  int stride;                  // stride value (added Project 1C)
+  int pass;                    // pass value (added Project 1C)
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
@@ -106,6 +109,22 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+};
+void setupQueue(); // queue setup
+void enqueue(struct proc *p);  // queue enter at end or sorted depending on schudlr type
+void enqueueSorted(struct proc *p);  // queue sorted by pass value
+int dequeue(); // remove first element in queue
+
+
+static const int nice_to_tickets[40] = { 
+ /* -20 */     88761,     71755,     56483,     46273,     36291, 
+ /* -15 */     29154,     23254,     18705,     14949,     11916, 
+ /* -10 */      9548,      7620,      6100,      4904,      3906, 
+ /*  -5 */      3121,      2501,      1991,      1586,      1277, 
+ /*   0 */      1024,       820,       655,       526,       423, 
+ /*   5 */       335,       272,       215,       172,       137, 
+ /*  10 */       110,        87,        70,        56,        45, 
+ /*  15 */        36,        29,        23,        18,        15, 
 };
 
 extern struct proc proc[NPROC]; 

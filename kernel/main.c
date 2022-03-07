@@ -40,6 +40,18 @@ main()
     trapinithart();   // install kernel trap vector
     plicinithart();   // ask PLIC for device interrupts
   }
+  switch (SCHEDULER) // different  SCHEDULER options
+  {
+  case 2: // round-robin with queue
+   scheduler_rr();
+    break;
+  case 3: // stride
+   scheduler_stride();
+  break;
+  default:
+  scheduler();
+    break;
+  }
+ 
 
-  scheduler();        
 }

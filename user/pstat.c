@@ -15,7 +15,7 @@ main(void)
 // loops stats and prints it out
       for(int i=0; i < sizeof(&stats.inuse); i++)
     {
-        printf("ID: %d pid: %d  inuse: %d nice: %d\n", i, stats.pid[i], stats.inuse[i], stats.nice[i]);
+        printf("ID: %d pid: %d  inuse: %d nice: %d runtime: %d stride: %d pass: %d\n", i, stats.pid[i], stats.inuse[i], stats.nice[i], stats.runtime[i], stats.stride[i], stats.pass[i]);
     }
 
   exit(0);

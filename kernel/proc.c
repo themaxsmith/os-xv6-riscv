@@ -46,6 +46,9 @@ proc_mapstacks(pagetable_t kpgtbl) {
 void
 procinit(void)
 {
+
+  setupQueue(); //setup queue
+
   struct proc *p;
 
   initlock(&pid_lock, "nextpid");
@@ -86,6 +89,29 @@ myproc(void) {
   return p;
 }
 
+// get the lowest correct pass from process table
+static int lowestPass(){
+ struct proc *p;
+ int lowestPassValue = INT_MAX; //lowest we want is zero 
+  int foundProcess = 0;
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if (p->state != UNUSED && p->pass < lowestPassValue){
+        foundProcess = 1;
+        lowestPassValue = p->pass;
+      }
+    }
+    //printf("lowest value: %d \n", lowestPassValue);
+
+    if (foundProcess == 0){
+      return 0;
+    }else{
+      return lowestPassValue;
+    }
+
+}
+
+
 int
 allocpid() {
   int pid;
@@ -121,6 +147,9 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->niceValue = 10; // default value for nice value
+  p->stride = 1000000 / nice_to_tickets[p->niceValue+20];
+  p->runtime = 0; // default value
+  p->pass = lowestPass() + p->stride; // get lowest pass plus stride
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -244,7 +273,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-
+  enqueue(p); // add to queue
   release(&p->lock);
 }
 
@@ -314,6 +343,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  enqueue(np); // added to queue
   release(&np->lock);
 
   return pid;
@@ -465,6 +495,218 @@ scheduler(void)
   }
 }
 
+
+#define MAX_UINT64 (-1) 
+#define EMPTY MAX_UINT64 
+ 
+// a node of the linked list 
+struct qentry { 
+    // uint64 pass; // (NOT) used by the stride scheduler to keep the list sorted - using the process pass value
+    uint64 prev; // index of previous qentry in list 
+    uint64 next; // index of next qentry in list 
+};
+ 
+// a fixed size table where the index of a process in proc[] is the same in qtable[] 
+struct qentry qtable[NPROC+2]; 
+
+//setup queue
+void setupQueue(){ 
+qtable[64].next = EMPTY; 
+qtable[65].prev = EMPTY; 
+}
+
+// add elements to tail -- if SCHEDULER 3 use sorted version 
+void enqueue(struct proc *p){
+
+  if (SCHEDULER == 1){//queue not needed in defualt sceduler
+    return;
+  }
+
+  if (SCHEDULER == 3){ // enqueue needs to sort by stride
+    enqueueSorted(p);
+    return;
+  }
+
+uint64 indexProcess = p - proc; 
+//printf("process added to queue: %d \n", indexProcess);
+int HEAD = qtable[64].next; 
+int TAIL = qtable[65].prev; 
+
+
+qtable[indexProcess].next = 65; // set next to tail
+qtable[indexProcess].prev = TAIL; // set prev to current tail
+
+if (HEAD == EMPTY){
+  qtable[64].next = indexProcess;  // point HEAD TO this
+}else{
+  qtable[TAIL].next = indexProcess;
+}
+
+qtable[65].prev = indexProcess; // set tail to new tail
+
+}
+
+void enqueueSorted(struct proc *p){ // going to search array and find the spot to place process
+uint64 indexProcess = p - proc; 
+
+int spotInQueue = 64; // start at head
+
+int foundSpot = 0;
+
+while (foundSpot == 0){
+  int nextSpot = qtable[spotInQueue].next;
+
+  if (nextSpot == EMPTY){ // incase it is empty
+    foundSpot = 1;
+
+  }else if (nextSpot == 65){ //incase we at the end
+
+  foundSpot = 1;
+
+  }else{
+
+   struct proc *compareP = &proc[nextSpot];
+
+  if (compareP->pass > p->pass){ // if process is less then the process 
+    foundSpot = 1;
+  }
+
+  }
+
+  if (foundSpot == 0){
+      spotInQueue = nextSpot; // look at the next spot to see 
+  }
+
+}
+
+if (qtable[spotInQueue].next == EMPTY){
+// first element in queue
+qtable[indexProcess].next = 65;
+
+}else{
+  // somewhere in the middle put after spotInQueue
+  // 5 
+  qtable[indexProcess].next = qtable[spotInQueue].next; // set to i next
+
+}
+  qtable[indexProcess].prev = spotInQueue;
+
+
+
+qtable[qtable[indexProcess].next].prev = indexProcess;
+qtable[qtable[indexProcess].prev].next = indexProcess;
+// printf("index set: %d prev: %d next: %d\n", indexProcess, qtable[indexProcess].prev, qtable[indexProcess].next);
+// printf("prev: %d next: %d\n", qtable[qtable[indexProcess].prev].next, qtable[qtable[indexProcess].next].prev);
+
+}
+
+//pops from HEAD element
+int dequeue(){
+
+int HEAD = qtable[64].next; 
+//int TAIL = qtable[65].prev; 
+
+if (HEAD == EMPTY) {
+  return EMPTY;
+}
+
+if (qtable[HEAD].next == 65){
+// last element
+//printf("last process \n");
+
+qtable[64].next = EMPTY; 
+qtable[65].prev = EMPTY; 
+}else{
+qtable[64].next = qtable[HEAD].next;
+}
+// clear out
+qtable[HEAD].next = EMPTY;
+qtable[HEAD].prev = EMPTY;
+
+
+//handle last element
+//printf("process removed from queue: %d \n", HEAD);
+
+return HEAD;
+}
+
+void
+scheduler_rr(void)
+{
+  //struct proc *p;
+  struct cpu *c = mycpu();
+  struct proc *p; 
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+      int process = dequeue();
+
+      if (process != EMPTY){
+
+        //printf("calling %d  \n",process);
+   
+      p = &proc[process];
+
+      acquire(&p->lock);
+
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+
+      release(&p->lock);
+      }
+  }
+}
+
+void
+scheduler_stride(void)
+{
+  //stride is sorted using the enqueueSorted to place process in the correct position in the queue based on pass
+  struct cpu *c = mycpu();
+  struct proc *p; 
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+      int process = dequeue();
+
+      if (process != EMPTY){
+   
+      p = &proc[process];
+
+      acquire(&p->lock);
+
+      if(p->state == RUNNABLE) {// should always be runnable unless error in queue
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        p->pass = p->pass + p->stride; // update pass every single time it runs
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+
+      release(&p->lock);
+      }
+  }
+}
+ 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -499,6 +741,8 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->runtime = p->runtime + 1; // runtime added
+  enqueue(p); // add to queue
   sched();
   release(&p->lock);
 }
@@ -567,6 +811,8 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+          enqueue(p); // added to queue
+
       }
       release(&p->lock);
     }
@@ -588,6 +834,8 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        enqueue(p); // added to queue
+
       }
       release(&p->lock);
       return 0;

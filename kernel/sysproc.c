@@ -125,6 +125,8 @@ sys_nice(void)
  if(-20 <= n && n <= 19){
     
      p->niceValue = n;
+     p->stride = 1000000 / nice_to_tickets[n+20]; // update stride tickets
+
     return 0;
  }
     return -1;
@@ -154,10 +156,16 @@ uint64 sys_getpstat(void) {
       kpstat.inuse[i] = 1;
       kpstat.pid[i] = current->pid;
       kpstat.nice[i] = current->niceValue;
+      kpstat.runtime[i] = current->runtime; // runtime passthrough
+      kpstat.stride[i] = current->stride; // stride passthrough
+      kpstat.pass[i] = current->pass; // pass passthrough
       }else{
       kpstat.inuse[i] = 0;
       kpstat.pid[i] = 0;
       kpstat.nice[i] = 0;
+      kpstat.runtime[i] = 0;
+      kpstat.stride[i] = 0;
+      kpstat.pass[i] = 0;
       }
     }
     
